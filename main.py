@@ -1,6 +1,7 @@
 import sys
 import os
 import json
+import math  # пока не используется, но пусть будет — вдруг пригодится
 
 from PyQt6.QtWidgets import (
     QApplication,
@@ -14,12 +15,11 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QSplitter,
     QLabel,
-    QGroupBox,
+    QTextEdit,
     QStackedWidget,
     QLineEdit,
     QSizePolicy,
     QScrollArea,
-    QTextEdit,        # <-- вернули QTextEdit
 )
 from PyQt6.QtCore import (
     Qt,
@@ -35,9 +35,25 @@ from fb2_utils import BookInfo, parse_fb2_book_info
 from theme import apply_dark_theme
 from tree_view import BookTreeWidget, MetadataWorker
 
-# Абсолютный путь к иконке
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# ------------ базовые пути: работают и в скрипте, и в собранном exe ------------
+
+def get_base_dir() -> str:
+    """
+    Папка, где лежит exe (если собрано PyInstaller'ом)
+    или сам main.py (при обычном запуске).
+    """
+    if getattr(sys, "frozen", False):
+        # Запущено из собранного exe
+        return os.path.dirname(sys.executable)
+    else:
+        # Обычный запуск скрипта
+        return os.path.dirname(os.path.abspath(__file__))
+
+
+BASE_DIR = get_base_dir()
 ICON_PATH = os.path.join(BASE_DIR, "grimoire.ico")
+CACHE_PATH = os.path.join(BASE_DIR, "fb2_tree_cache.json")
 
 
 # ---------- Текстовое поле для чтения: без прокрутки + сигнал ресайза ----------
@@ -76,10 +92,6 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        # Иконка для главного окна (если файл существует)
-        if os.path.exists(ICON_PATH):
-            self.setWindowIcon(QIcon(ICON_PATH))
-
         # Явно разрешаем менять размер окна по обоим направлениям
         self.setMinimumSize(600, 400)
         self.setMaximumSize(16777215, 16777215)
@@ -103,16 +115,16 @@ class MainWindow(QMainWindow):
         self.current_page_index: int = 0
 
         # Кеш дерева / UI
-        self.app_dir = os.path.dirname(os.path.abspath(__file__))
-        self.cache_path = os.path.join(self.app_dir, "fb2_tree_cache.json")
+        self.app_dir = BASE_DIR
+        self.cache_path = CACHE_PATH
         self.current_root_path: str | None = None
 
         # Флаг для восстановления максимизации после show()
         self._restore_maximized = False
 
         # ---------- UI ----------
+
         central = QWidget()
-        # центральный виджет должен уметь растягиваться
         central.setSizePolicy(
             QSizePolicy(QSizePolicy.Policy.Expanding,
                         QSizePolicy.Policy.Expanding)
@@ -143,24 +155,26 @@ class MainWindow(QMainWindow):
         self.book_tree.setHeaderLabels(["Название"])
         self.splitter.addWidget(self.book_tree)
 
-        # Право: стэк (инфо/ридер)
+        # Право: стэк (без лишних QScrollArea выше)
         self.stack = QStackedWidget()
         self.splitter.addWidget(self.stack)
 
         self.splitter.setStretchFactor(0, 1)
         self.splitter.setStretchFactor(1, 3)
 
-        # ---------- Страница ИНФО (вся правая часть в одном ScrollArea) ----------
-        self.info_scroll = QScrollArea()
-        self.info_scroll.setWidgetResizable(True)
+        # ---------- Страница ИНФО (единый прокручиваемый блок) ----------
 
         self.info_page = QWidget()
         info_layout = QVBoxLayout(self.info_page)
-        info_layout.setContentsMargins(0, 0, 0, 0)
-        info_layout.setSpacing(10)
 
-        self.info_scroll.setWidget(self.info_page)
-        self.stack.addWidget(self.info_scroll)
+        # ScrollArea, в котором ВСЯ информация о книге скроллится как единый блок
+        self.info_scroll = QScrollArea()
+        self.info_scroll.setWidgetResizable(True)
+        info_layout.addWidget(self.info_scroll)
+
+        self.info_content = QWidget()
+        content_layout = QVBoxLayout(self.info_content)
+        self.info_scroll.setWidget(self.info_content)
 
         # Заголовок
         self.detail_title = QLabel("Выберите книгу")
@@ -169,6 +183,7 @@ class MainWindow(QMainWindow):
         title_font.setBold(True)
         self.detail_title.setFont(title_font)
         self.detail_title.setWordWrap(True)
+        content_layout.addWidget(self.detail_title)
 
         # Метаданные
         self.detail_meta = QLabel("")
@@ -176,15 +191,11 @@ class MainWindow(QMainWindow):
         meta_font.setPointSize(10)
         self.detail_meta.setFont(meta_font)
         self.detail_meta.setWordWrap(True)
+        content_layout.addWidget(self.detail_meta)
 
-        info_layout.addWidget(self.detail_title)
-        info_layout.addWidget(self.detail_meta)
-
-        # Панель с обложкой, кнопкой и описанием (без заголовка "Книга")
-        self.book_panel = QWidget()
-        panel_layout = QVBoxLayout(self.book_panel)
-        panel_layout.setContentsMargins(10, 10, 10, 10)
-        panel_layout.setSpacing(8)
+        # Блок: обложка + кнопка открыть + прогресс + описание
+        self.book_block = QWidget()
+        block_layout = QVBoxLayout(self.book_block)
 
         # Обложка
         self.detail_cover = QLabel()
@@ -203,7 +214,7 @@ class MainWindow(QMainWindow):
             }
             """
         )
-        panel_layout.addWidget(self.detail_cover, 0, Qt.AlignmentFlag.AlignHCenter)
+        block_layout.addWidget(self.detail_cover, alignment=Qt.AlignmentFlag.AlignHCenter)
 
         # Панель: открыть + прогресс
         open_layout = QHBoxLayout()
@@ -217,21 +228,23 @@ class MainWindow(QMainWindow):
         open_layout.addWidget(self.lbl_progress_info)
 
         open_layout.addStretch()
-        panel_layout.addLayout(open_layout)
+        block_layout.addLayout(open_layout)
 
-        # Описание (теперь QLabel, без отдельного скролла)
-        self.info_desc = QLabel()
-        self.info_desc.setWordWrap(True)
-        self.info_desc.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-            | Qt.TextInteractionFlag.LinksAccessibleByMouse
-        )
-        panel_layout.addWidget(self.info_desc)
+        # Описание (краткое) из fb2
+        self.info_desc = QTextEdit()
+        self.info_desc.setReadOnly(True)
+        # убираем собственные скроллбары, чтобы скроллился только общий блок
+        self.info_desc.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.info_desc.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        block_layout.addWidget(self.info_desc)
 
-        info_layout.addWidget(self.book_panel)
-        self.book_panel.setVisible(False)
+        content_layout.addWidget(self.book_block)
+        self.book_block.setVisible(False)
+
+        self.stack.addWidget(self.info_page)
 
         # ---------- Страница РИДЕРА ----------
+
         self.reader_page = QWidget()
         reader_layout = QVBoxLayout(self.reader_page)
 
@@ -280,7 +293,7 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.reader_page)
 
         # Начально показываем страницу инфо
-        self.stack.setCurrentWidget(self.info_scroll)
+        self.stack.setCurrentWidget(self.info_page)
 
         # Сигнал выбора в дереве
         self.book_tree.itemSelectionChanged.connect(self.on_tree_selection_changed)
@@ -342,9 +355,11 @@ class MainWindow(QMainWindow):
     def cancel_metadata_worker(self):
         if self.metadata_worker is not None:
             self.metadata_worker.stop()
+
         if self.metadata_thread is not None:
             self.metadata_thread.quit()
             self.metadata_thread.wait()
+
         self.metadata_worker = None
         self.metadata_thread = None
 
@@ -428,7 +443,7 @@ class MainWindow(QMainWindow):
 
         try:
             with open(self.cache_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
+           	 data = json.load(f)
         except Exception:
             return False
 
@@ -664,17 +679,17 @@ class MainWindow(QMainWindow):
 
         # При выборе книги показываем страницу инфо
         self.is_reading = False
-        self.stack.setCurrentWidget(self.info_scroll)
+        self.stack.setCurrentWidget(self.info_page)
         self.show_book_info(info, path)
 
     def show_book_info(self, info: BookInfo | None, path: str | None):
         if info is None:
             self.detail_title.setText("Выберите книгу")
             self.detail_meta.setText("")
-            self.info_desc.setText("")
+            self.info_desc.setPlainText("")
             self.detail_cover.clear()
             self.btn_open_book.setEnabled(False)
-            self.book_panel.setVisible(False)
+            self.book_block.setVisible(False)
             self.lbl_progress_info.setText("0%")
             self.lbl_progress_read.setText("0%")
             self.page_edit.setText("0")
@@ -684,7 +699,7 @@ class MainWindow(QMainWindow):
             self.btn_next_page.setEnabled(False)
             return
 
-        self.book_panel.setVisible(True)
+        self.book_block.setVisible(True)
         self.btn_open_book.setEnabled(path is not None)
 
         # Заголовок
@@ -712,9 +727,9 @@ class MainWindow(QMainWindow):
 
         # Описание
         if info.description:
-            self.info_desc.setText(info.description)
+            self.info_desc.setPlainText(info.description)
         else:
-            self.info_desc.setText("")
+            self.info_desc.setPlainText("")
 
         # Обложка
         if info.cover_bytes:
@@ -893,7 +908,7 @@ class MainWindow(QMainWindow):
     def back_to_info(self):
         """Вернуться со страницы ридера на страницу информации о книге."""
         self.is_reading = False
-        self.stack.setCurrentWidget(self.info_scroll)
+        self.stack.setCurrentWidget(self.info_page)
         # обновим прогресс на инфо-странице
         if self.current_book_path:
             info = self.book_info_cache.get(self.current_book_path)
@@ -917,6 +932,7 @@ class MainWindow(QMainWindow):
             ratio = page_index / (total - 1)
 
         self.show_current_page()
+        # show_current_page уже вызывает update_page_and_progress_labels
 
     def go_next_page(self):
         if not self.is_reading:
@@ -970,13 +986,21 @@ class MainWindow(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
 
-    # Устанавливаем иконку глобально для всех окон/диалогов
+    # глобальная иконка
     if os.path.exists(ICON_PATH):
-        app.setWindowIcon(QIcon(ICON_PATH))
+        icon = QIcon(ICON_PATH)
+        app.setWindowIcon(icon)
+    else:
+        icon = QIcon()
 
     apply_dark_theme(app)
 
     w = MainWindow()
+
+    # Иконка также для главного окна
+    if not icon.isNull():
+        w.setWindowIcon(icon)
+
     w.show()
 
     # Восстановление максимизации
