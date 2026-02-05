@@ -20,6 +20,8 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QSizePolicy,
     QScrollArea,
+    QComboBox,
+    QSpinBox,
 )
 from PyQt6.QtCore import (
     Qt,
@@ -32,7 +34,7 @@ from PyQt6.QtCore import (
 from PyQt6.QtGui import QPixmap, QFont, QDesktopServices, QIcon
 
 from fb2_utils import BookInfo, parse_fb2_book_info
-from theme import apply_dark_theme
+from theme import apply_theme, load_themes
 from tree_view import BookTreeWidget, MetadataWorker
 
 
@@ -119,6 +121,8 @@ class MainWindow(QMainWindow):
                 "cache_save_error_title": "Ошибка сохранения кеша дерева",
                 "text_unavailable": "(Текст книги недоступен)",
                 "language_button": "RU",
+                "theme_label": "Тема:",
+                "font_size_label": "Размер шрифта:",
             },
             "en": {
                 "window_title": "Grimoire",
@@ -145,8 +149,18 @@ class MainWindow(QMainWindow):
                 "cache_save_error_title": "Failed to save tree cache",
                 "text_unavailable": "(Book text unavailable)",
                 "language_button": "EN",
+                "theme_label": "Theme:",
+                "font_size_label": "Font size:",
             },
         }
+
+        self.app = QApplication.instance()
+        self.theme_dir = os.path.join(BASE_DIR, "themes")
+        self.themes = load_themes(self.theme_dir)
+        self.theme_by_key = {theme["key"]: theme for theme in self.themes}
+        self.current_theme_key = self.themes[0]["key"] if self.themes else None
+
+        self.reader_font_size = 14
 
         # Явно разрешаем менять размер окна по обоим направлениям
         self.setMinimumSize(600, 400)
@@ -199,6 +213,13 @@ class MainWindow(QMainWindow):
         self.btn_refresh = QPushButton()
         self.btn_refresh.clicked.connect(self.refresh_current_folder)
         btn_layout.addWidget(self.btn_refresh)
+
+        self.lbl_theme = QLabel()
+        btn_layout.addWidget(self.lbl_theme)
+
+        self.theme_combo = QComboBox()
+        self.theme_combo.currentIndexChanged.connect(self.on_theme_changed)
+        btn_layout.addWidget(self.theme_combo)
 
         btn_layout.addStretch()
 
@@ -319,6 +340,15 @@ class MainWindow(QMainWindow):
         self.lbl_progress_read = QLabel("0%")
         controls_layout.addWidget(self.lbl_progress_read)
 
+        self.lbl_font_size = QLabel()
+        controls_layout.addWidget(self.lbl_font_size)
+
+        self.font_size_spin = QSpinBox()
+        self.font_size_spin.setRange(10, 32)
+        self.font_size_spin.setValue(self.reader_font_size)
+        self.font_size_spin.valueChanged.connect(self.on_font_size_changed)
+        controls_layout.addWidget(self.font_size_spin)
+
         controls_layout.addStretch()
 
         # Навигация по страницам: ⟨ [page_edit] / [total] ⟩
@@ -369,7 +399,9 @@ class MainWindow(QMainWindow):
         self.metadata_thread: QThread | None = None
         self.metadata_worker: MetadataWorker | None = None
 
+        self.apply_theme_by_key(self.current_theme_key)
         self.apply_language()
+        self.apply_reader_font_size(self.reader_font_size)
 
         # При старте пробуем кеш
         if not self.load_cache():
@@ -413,6 +445,51 @@ class MainWindow(QMainWindow):
         self.language = "en" if self.language == "ru" else "ru"
         self.apply_language()
 
+    def get_theme_display_name(self, theme: dict) -> str:
+        if self.language == "ru":
+            return theme.get("name_ru") or theme.get("name") or theme["key"]
+        return theme.get("name_en") or theme.get("name") or theme["key"]
+
+    def apply_theme_by_key(self, theme_key: str | None):
+        if not theme_key:
+            return
+        theme = self.theme_by_key.get(theme_key)
+        if not theme:
+            return
+        apply_theme(self.app, theme)
+        self.current_theme_key = theme_key
+        if hasattr(self, "theme_combo"):
+            index = self.theme_combo.findData(theme_key)
+            if index != -1:
+                self.theme_combo.blockSignals(True)
+                self.theme_combo.setCurrentIndex(index)
+                self.theme_combo.blockSignals(False)
+
+    def on_theme_changed(self, index: int):
+        theme_key = self.theme_combo.itemData(index)
+        if theme_key and theme_key != self.current_theme_key:
+            self.apply_theme_by_key(theme_key)
+
+    def apply_reader_font_size(self, size: int):
+        size = max(self.font_size_spin.minimum(), min(size, self.font_size_spin.maximum()))
+        self.reader_font_size = size
+        font = self.reader_edit.font()
+        font.setPointSize(size)
+        self.reader_edit.setFont(font)
+
+        if hasattr(self, "font_size_spin"):
+            self.font_size_spin.blockSignals(True)
+            self.font_size_spin.setValue(size)
+            self.font_size_spin.blockSignals(False)
+
+        if self.is_reading and self.current_full_text and self.current_book_path:
+            abs_path = os.path.abspath(self.current_book_path)
+            ratio = float(self.book_progress.get(abs_path, 0.0))
+            self.paginate_current_text(ratio)
+
+    def on_font_size_changed(self, value: int):
+        self.apply_reader_font_size(value)
+
     def apply_language(self):
         self.setWindowTitle(self.t("window_title"))
         self.btn_choose.setText(self.t("choose_folder"))
@@ -424,6 +501,20 @@ class MainWindow(QMainWindow):
         self.btn_language.setText(self.t("language_button"))
         self.book_tree.setHeaderLabels([self.t("tree_header")])
         self.book_tree.set_language(self.language)
+        self.lbl_theme.setText(self.t("theme_label"))
+        self.lbl_font_size.setText(self.t("font_size_label"))
+
+        if self.theme_combo.count() == 0:
+            for theme in self.themes:
+                self.theme_combo.addItem(self.get_theme_display_name(theme), theme["key"])
+        else:
+            self.theme_combo.blockSignals(True)
+            for i in range(self.theme_combo.count()):
+                theme_key = self.theme_combo.itemData(i)
+                theme = self.theme_by_key.get(theme_key)
+                if theme:
+                    self.theme_combo.setItemText(i, self.get_theme_display_name(theme))
+            self.theme_combo.blockSignals(False)
 
         if self.is_reading:
             return
@@ -518,6 +609,8 @@ class MainWindow(QMainWindow):
         ui_state = {
             "is_maximized": self.isMaximized(),
             "splitter_sizes": self.splitter.sizes(),
+            "theme": self.current_theme_key,
+            "font_size": self.reader_font_size,
         }
 
         data = {
@@ -609,6 +702,14 @@ class MainWindow(QMainWindow):
     def apply_ui_state(self, ui_state: dict | None):
         if not ui_state:
             return
+
+        theme_key = ui_state.get("theme")
+        if isinstance(theme_key, str):
+            self.apply_theme_by_key(theme_key)
+
+        font_size = ui_state.get("font_size")
+        if isinstance(font_size, (int, float)):
+            self.apply_reader_font_size(int(font_size))
 
         sizes = ui_state.get("splitter_sizes")
         if isinstance(sizes, list) and len(sizes) == 2:
@@ -1091,8 +1192,6 @@ if __name__ == "__main__":
         app.setWindowIcon(icon)
     else:
         icon = QIcon()
-
-    apply_dark_theme(app)
 
     w = MainWindow()
 

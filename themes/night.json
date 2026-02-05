@@ -1,0 +1,20 @@
+{
+  "name": "Night",
+  "name_ru": "Ночь",
+  "name_en": "Night",
+  "palette": {
+    "Window": "#1e1e1e",
+    "WindowText": "#e0e0e0",
+    "Base": "#252525",
+    "AlternateBase": "#2f2f2f",
+    "ToolTipBase": "#e0e0e0",
+    "ToolTipText": "#1e1e1e",
+    "Text": "#e0e0e0",
+    "Button": "#3a3a3a",
+    "ButtonText": "#e0e0e0",
+    "BrightText": "#ff0000",
+    "Highlight": "#3c6cff",
+    "HighlightedText": "#000000"
+  },
+  "stylesheet": "QMainWindow { background-color: #1e1e1e; }\nQTreeWidget { background-color: #252525; alternate-background-color: #2f2f2f; color: #e0e0e0; border: 1px solid #444; }\nQTreeWidget::item:selected { background-color: #3c6cff; color: #000000; }\nQGroupBox { border: 1px solid #555; border-radius: 6px; margin-top: 10px; padding: 10px; }\nQGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 3px 0 3px; }\nQTextEdit { background-color: #252525; color: #e0e0e0; border: 1px solid #555; }\nQPushButton { background-color: #3a3a3a; color: #e0e0e0; border-radius: 4px; padding: 4px 10px; }\nQPushButton:hover { background-color: #505050; }\nQPushButton:pressed { background-color: #606060; }\nQLabel { color: #e0e0e0; }\nQMenu { background-color: #252525; color: #e0e0e0; border: 1px solid #444; }\nQMenu::item { padding: 4px 20px 4px 24px; background-color: transparent; }\nQMenu::item:selected { background-color: #3c6cff; color: #000000; }\nQMenu::separator { height: 1px; background: #444; margin-left: 4px; margin-right: 4px; }"
+}

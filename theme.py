@@ -1,89 +1,60 @@
+import json
+import os
+
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QPalette, QColor
 
 
-def apply_dark_theme(app: QApplication) -> None:
-    palette = QPalette()
+ROLE_MAP = {
+    "Window": QPalette.ColorRole.Window,
+    "WindowText": QPalette.ColorRole.WindowText,
+    "Base": QPalette.ColorRole.Base,
+    "AlternateBase": QPalette.ColorRole.AlternateBase,
+    "ToolTipBase": QPalette.ColorRole.ToolTipBase,
+    "ToolTipText": QPalette.ColorRole.ToolTipText,
+    "Text": QPalette.ColorRole.Text,
+    "Button": QPalette.ColorRole.Button,
+    "ButtonText": QPalette.ColorRole.ButtonText,
+    "BrightText": QPalette.ColorRole.BrightText,
+    "Highlight": QPalette.ColorRole.Highlight,
+    "HighlightedText": QPalette.ColorRole.HighlightedText,
+}
 
-    palette.setColor(QPalette.ColorRole.Window, QColor(30, 30, 30))
-    palette.setColor(QPalette.ColorRole.WindowText, QColor(220, 220, 220))
-    palette.setColor(QPalette.ColorRole.Base, QColor(25, 25, 25))
-    palette.setColor(QPalette.ColorRole.AlternateBase, QColor(35, 35, 35))
-    palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(220, 220, 220))
-    palette.setColor(QPalette.ColorRole.ToolTipText, QColor(30, 30, 30))
-    palette.setColor(QPalette.ColorRole.Text, QColor(220, 220, 220))
-    palette.setColor(QPalette.ColorRole.Button, QColor(45, 45, 45))
-    palette.setColor(QPalette.ColorRole.ButtonText, QColor(220, 220, 220))
-    palette.setColor(QPalette.ColorRole.BrightText, QColor(255, 0, 0))
-    palette.setColor(QPalette.ColorRole.Highlight, QColor(64, 128, 255))
-    palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
+
+def apply_theme(app: QApplication, theme: dict) -> None:
+    if not theme:
+        return
+
+    palette = QPalette()
+    palette_data = theme.get("palette", {})
+    for role_name, color_value in palette_data.items():
+        role = ROLE_MAP.get(role_name)
+        if role is None:
+            continue
+        palette.setColor(role, QColor(color_value))
 
     app.setPalette(palette)
+    app.setStyleSheet(theme.get("stylesheet", ""))
 
-    app.setStyleSheet(
-        """
-        QMainWindow {
-            background-color: #1e1e1e;
-        }
-        QTreeWidget {
-            background-color: #252525;
-            alternate-background-color: #2f2f2f;
-            color: #e0e0e0;
-            border: 1px solid #444;
-        }
-        QTreeWidget::item:selected {
-            background-color: #3c6cff;
-            color: #000000;
-        }
-        QGroupBox {
-            border: 1px solid #555;
-            border-radius: 6px;
-            margin-top: 10px;
-            padding: 10px;
-        }
-        QGroupBox::title {
-            subcontrol-origin: margin;
-            left: 10px;
-            padding: 0 3px 0 3px;
-        }
-        QTextEdit {
-            background-color: #252525;
-            color: #e0e0e0;
-            border: 1px solid #555;
-        }
-        QPushButton {
-            background-color: #3a3a3a;
-            color: #e0e0e0;
-            border-radius: 4px;
-            padding: 4px 10px;
-        }
-        QPushButton:hover {
-            background-color: #505050;
-        }
-        QPushButton:pressed {
-            background-color: #606060;
-        }
-        QLabel {
-            color: #e0e0e0;
-        }
-        QMenu {
-            background-color: #252525;
-            color: #e0e0e0;
-            border: 1px solid #444;
-        }
-        QMenu::item {
-            padding: 4px 20px 4px 24px;
-            background-color: transparent;
-        }
-        QMenu::item:selected {
-            background-color: #3c6cff;
-            color: #000000;
-        }
-        QMenu::separator {
-            height: 1px;
-            background: #444;
-            margin-left: 4px;
-            margin-right: 4px;
-        }
-        """
-    )
+
+def load_themes(theme_dir: str) -> list[dict]:
+    themes: list[dict] = []
+    if not os.path.isdir(theme_dir):
+        return themes
+
+    for entry in sorted(os.listdir(theme_dir)):
+        if not entry.lower().endswith(".json"):
+            continue
+        path = os.path.join(theme_dir, entry)
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+        except (OSError, json.JSONDecodeError):
+            continue
+
+        theme_key = os.path.splitext(entry)[0]
+        data["key"] = theme_key
+        data.setdefault("name", theme_key)
+        themes.append(data)
+
+    return themes
