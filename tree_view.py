@@ -25,6 +25,43 @@ class BookTreeWidget(QTreeWidget):
         super().__init__(parent)
 
         self.root_path: str | None = None
+        self.language = "ru"
+        self.translations = {
+            "ru": {
+                "move_error_title": "Ошибка перемещения",
+                "move_error_body": "Не удалось переместить файл:\n{old}\n→ {new}\n\n{error}",
+                "create_folder": "Создать папку",
+                "delete_folder": "Удалить папку",
+                "create_folder_title": "Создать папку",
+                "create_folder_prompt": "Имя новой папки:",
+                "folder_exists_title": "Ошибка",
+                "folder_exists_body": "Такая папка уже существует.",
+                "create_folder_error_title": "Ошибка создания папки",
+                "delete_not_allowed_title": "Нельзя удалить",
+                "delete_not_allowed_body": "Папка не пуста. Сначала удалите или перенесите файлы/папки.",
+                "folder_access_error_title": "Ошибка доступа к папке",
+                "delete_folder_title": "Удаление папки",
+                "delete_folder_body": "Удалить папку?\n{path}",
+                "delete_folder_error_title": "Ошибка удаления папки",
+            },
+            "en": {
+                "move_error_title": "Move error",
+                "move_error_body": "Failed to move file:\n{old}\n→ {new}\n\n{error}",
+                "create_folder": "Create folder",
+                "delete_folder": "Delete folder",
+                "create_folder_title": "Create folder",
+                "create_folder_prompt": "New folder name:",
+                "folder_exists_title": "Error",
+                "folder_exists_body": "That folder already exists.",
+                "create_folder_error_title": "Create folder error",
+                "delete_not_allowed_title": "Cannot delete",
+                "delete_not_allowed_body": "The folder is not empty. Delete or move files/folders first.",
+                "folder_access_error_title": "Folder access error",
+                "delete_folder_title": "Delete folder",
+                "delete_folder_body": "Delete folder?\n{path}",
+                "delete_folder_error_title": "Delete folder error",
+            },
+        }
 
         # Drag'n'drop настройки
         self.setDragEnabled(True)
@@ -36,6 +73,13 @@ class BookTreeWidget(QTreeWidget):
         # Контекстное меню по ПКМ
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._on_context_menu)
+
+    def set_language(self, language: str):
+        if language in self.translations:
+            self.language = language
+
+    def t(self, key: str) -> str:
+        return self.translations.get(self.language, self.translations["ru"]).get(key, key)
 
     # --- drag'n'drop: переопределяем dropEvent для перемещения файлов ---
 
@@ -86,8 +130,8 @@ class BookTreeWidget(QTreeWidget):
             except Exception as e:
                 QMessageBox.warning(
                     self,
-                    "Ошибка перемещения",
-                    f"Не удалось переместить файл:\n{old_path}\n→ {new_path}\n\n{e}",
+                    self.t("move_error_title"),
+                    self.t("move_error_body").format(old=old_path, new=new_path, error=e),
                 )
 
     # --- контекстное меню (создать / удалить папку) ---
@@ -98,7 +142,7 @@ class BookTreeWidget(QTreeWidget):
 
         menu = QMenu(self)
 
-        create_action = menu.addAction("Создать папку")
+        create_action = menu.addAction(self.t("create_folder"))
         delete_action = None
 
         item_path = None
@@ -113,7 +157,7 @@ class BookTreeWidget(QTreeWidget):
                     is_root = True
 
         if is_folder and not is_root:
-            delete_action = menu.addAction("Удалить папку")
+            delete_action = menu.addAction(self.t("delete_folder"))
 
         action = menu.exec(global_pos)
         if action is None:
@@ -128,7 +172,11 @@ class BookTreeWidget(QTreeWidget):
         if not self.root_path:
             return
 
-        name, ok = QInputDialog.getText(self, "Создать папку", "Имя новой папки:")
+        name, ok = QInputDialog.getText(
+            self,
+            self.t("create_folder_title"),
+            self.t("create_folder_prompt"),
+        )
         if not ok or not name.strip():
             return
         name = name.strip()
@@ -146,13 +194,17 @@ class BookTreeWidget(QTreeWidget):
 
         new_path = os.path.join(base_dir, name)
         if os.path.exists(new_path):
-            QMessageBox.warning(self, "Ошибка", "Такая папка уже существует.")
+            QMessageBox.warning(
+                self,
+                self.t("folder_exists_title"),
+                self.t("folder_exists_body"),
+            )
             return
 
         try:
             os.makedirs(new_path)
         except Exception as e:
-            QMessageBox.warning(self, "Ошибка создания папки", str(e))
+            QMessageBox.warning(self, self.t("create_folder_error_title"), str(e))
             return
 
         new_item = QTreeWidgetItem([name])
@@ -167,18 +219,18 @@ class BookTreeWidget(QTreeWidget):
             if os.listdir(item_path):
                 QMessageBox.information(
                     self,
-                    "Нельзя удалить",
-                    "Папка не пуста. Сначала удалите или перенесите файлы/папки.",
+                    self.t("delete_not_allowed_title"),
+                    self.t("delete_not_allowed_body"),
                 )
                 return
         except Exception as e:
-            QMessageBox.warning(self, "Ошибка доступа к папке", str(e))
+            QMessageBox.warning(self, self.t("folder_access_error_title"), str(e))
             return
 
         reply = QMessageBox.question(
             self,
-            "Удаление папки",
-            f"Удалить папку?\n{item_path}",
+            self.t("delete_folder_title"),
+            self.t("delete_folder_body").format(path=item_path),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -188,7 +240,7 @@ class BookTreeWidget(QTreeWidget):
         try:
             os.rmdir(item_path)
         except Exception as e:
-            QMessageBox.warning(self, "Ошибка удаления папки", str(e))
+            QMessageBox.warning(self, self.t("delete_folder_error_title"), str(e))
             return
 
         parent = item.parent()

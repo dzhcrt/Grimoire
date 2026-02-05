@@ -92,11 +92,67 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
+        self.language = "ru"
+        self.translations = {
+            "ru": {
+                "window_title": "Grimoire",
+                "choose_folder": "Выбрать папку",
+                "refresh": "Обновить",
+                "open_book": "Открыть книгу",
+                "back_to_info": "К информации",
+                "select_book": "Выберите книгу",
+                "book_info": "Информация о книге",
+                "authors": "Автор(ы)",
+                "genres": "Жанр(ы)",
+                "publisher": "Издательство",
+                "date": "Дата",
+                "language": "Язык",
+                "tree_header": "Название",
+                "prev_page": "⟨",
+                "next_page": "⟩",
+                "folder_first_launch": "Выберите папку с FB2 книгами (первый запуск)",
+                "folder_select": "Выберите папку с FB2 книгами",
+                "refresh_title": "Обновление",
+                "refresh_body": "Текущая папка не задана или недоступна. Выберите папку заново.",
+                "no_books_title": "Результат",
+                "no_books_body": "FB2 файлы не найдены.",
+                "cache_save_error_title": "Ошибка сохранения кеша дерева",
+                "text_unavailable": "(Текст книги недоступен)",
+                "language_button": "RU",
+            },
+            "en": {
+                "window_title": "Grimoire",
+                "choose_folder": "Choose folder",
+                "refresh": "Refresh",
+                "open_book": "Open book",
+                "back_to_info": "Back to info",
+                "select_book": "Select a book",
+                "book_info": "Book information",
+                "authors": "Author(s)",
+                "genres": "Genre(s)",
+                "publisher": "Publisher",
+                "date": "Date",
+                "language": "Language",
+                "tree_header": "Title",
+                "prev_page": "⟨",
+                "next_page": "⟩",
+                "folder_first_launch": "Select folder with FB2 books (first launch)",
+                "folder_select": "Select folder with FB2 books",
+                "refresh_title": "Refresh",
+                "refresh_body": "Current folder is not set or unavailable. Choose a folder again.",
+                "no_books_title": "Result",
+                "no_books_body": "No FB2 files found.",
+                "cache_save_error_title": "Failed to save tree cache",
+                "text_unavailable": "(Book text unavailable)",
+                "language_button": "EN",
+            },
+        }
+
         # Явно разрешаем менять размер окна по обоим направлениям
         self.setMinimumSize(600, 400)
         self.setMaximumSize(16777215, 16777215)
 
-        self.setWindowTitle("Grimoire")
+        self.setWindowTitle(self.t("window_title"))
         self.resize(1000, 600)
 
         # Кеш подробной инфы по книгам
@@ -136,15 +192,19 @@ class MainWindow(QMainWindow):
         btn_layout = QHBoxLayout()
         root_layout.addLayout(btn_layout)
 
-        self.btn_choose = QPushButton("Выбрать папку")
+        self.btn_choose = QPushButton()
         self.btn_choose.clicked.connect(self.choose_folder)
         btn_layout.addWidget(self.btn_choose)
 
-        self.btn_refresh = QPushButton("Обновить")
+        self.btn_refresh = QPushButton()
         self.btn_refresh.clicked.connect(self.refresh_current_folder)
         btn_layout.addWidget(self.btn_refresh)
 
         btn_layout.addStretch()
+
+        self.btn_language = QPushButton()
+        self.btn_language.clicked.connect(self.toggle_language)
+        btn_layout.addWidget(self.btn_language)
 
         # Splitter: слева дерево, справа стэк (инфо/ридер)
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -152,7 +212,7 @@ class MainWindow(QMainWindow):
 
         # Лево: дерево
         self.book_tree = BookTreeWidget()
-        self.book_tree.setHeaderLabels(["Название"])
+        self.book_tree.setHeaderLabels([self.t("tree_header")])
         self.splitter.addWidget(self.book_tree)
 
         # Право: стэк (без лишних QScrollArea выше)
@@ -177,7 +237,7 @@ class MainWindow(QMainWindow):
         self.info_scroll.setWidget(self.info_content)
 
         # Заголовок
-        self.detail_title = QLabel("Выберите книгу")
+        self.detail_title = QLabel()
         title_font = QFont()
         title_font.setPointSize(14)
         title_font.setBold(True)
@@ -219,7 +279,7 @@ class MainWindow(QMainWindow):
         # Панель: открыть + прогресс
         open_layout = QHBoxLayout()
 
-        self.btn_open_book = QPushButton("Открыть книгу")
+        self.btn_open_book = QPushButton()
         self.btn_open_book.clicked.connect(self.open_current_book)
         self.btn_open_book.setEnabled(False)
         open_layout.addWidget(self.btn_open_book)
@@ -251,7 +311,7 @@ class MainWindow(QMainWindow):
         controls_layout = QHBoxLayout()
 
         # Кнопка назад к инфо
-        self.btn_back_info = QPushButton("К информации")
+        self.btn_back_info = QPushButton()
         self.btn_back_info.clicked.connect(self.back_to_info)
         controls_layout.addWidget(self.btn_back_info)
 
@@ -262,7 +322,7 @@ class MainWindow(QMainWindow):
         controls_layout.addStretch()
 
         # Навигация по страницам: ⟨ [page_edit] / [total] ⟩
-        self.btn_prev_page = QPushButton("⟨")
+        self.btn_prev_page = QPushButton()
         self.btn_prev_page.clicked.connect(self.go_prev_page)
         self.btn_prev_page.setEnabled(False)
         controls_layout.addWidget(self.btn_prev_page)
@@ -277,7 +337,7 @@ class MainWindow(QMainWindow):
         self.lbl_page_total = QLabel("/0")
         controls_layout.addWidget(self.lbl_page_total)
 
-        self.btn_next_page = QPushButton("⟩")
+        self.btn_next_page = QPushButton()
         self.btn_next_page.clicked.connect(self.go_next_page)
         self.btn_next_page.setEnabled(False)
         controls_layout.addWidget(self.btn_next_page)
@@ -309,9 +369,11 @@ class MainWindow(QMainWindow):
         self.metadata_thread: QThread | None = None
         self.metadata_worker: MetadataWorker | None = None
 
+        self.apply_language()
+
         # При старте пробуем кеш
         if not self.load_cache():
-            self.ask_initial_folder()
+            self.show_book_info(None, None)
         else:
             root_item = self.book_tree.topLevelItem(0)
             if root_item:
@@ -343,6 +405,39 @@ class MainWindow(QMainWindow):
                     return True
 
         return super().eventFilter(obj, event)
+
+    def t(self, key: str) -> str:
+        return self.translations.get(self.language, self.translations["ru"]).get(key, key)
+
+    def toggle_language(self):
+        self.language = "en" if self.language == "ru" else "ru"
+        self.apply_language()
+
+    def apply_language(self):
+        self.setWindowTitle(self.t("window_title"))
+        self.btn_choose.setText(self.t("choose_folder"))
+        self.btn_refresh.setText(self.t("refresh"))
+        self.btn_open_book.setText(self.t("open_book"))
+        self.btn_back_info.setText(self.t("back_to_info"))
+        self.btn_prev_page.setText(self.t("prev_page"))
+        self.btn_next_page.setText(self.t("next_page"))
+        self.btn_language.setText(self.t("language_button"))
+        self.book_tree.setHeaderLabels([self.t("tree_header")])
+        self.book_tree.set_language(self.language)
+
+        if self.is_reading:
+            return
+
+        if self.current_book_path:
+            info = self.book_info_cache.get(self.current_book_path)
+            if info is None and os.path.isfile(self.current_book_path):
+                info = parse_fb2_book_info(self.current_book_path)
+                self.book_info_cache[self.current_book_path] = info
+            if info is not None:
+                self.show_book_info(info, self.current_book_path)
+                return
+
+        self.show_book_info(None, None)
 
     # ---------- Сохранение состояния при закрытии ----------
 
@@ -435,7 +530,7 @@ class MainWindow(QMainWindow):
             with open(self.cache_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            QMessageBox.warning(self, "Ошибка сохранения кеша дерева", str(e))
+            QMessageBox.warning(self, self.t("cache_save_error_title"), str(e))
 
     def load_cache(self) -> bool:
         if not os.path.exists(self.cache_path):
@@ -553,7 +648,7 @@ class MainWindow(QMainWindow):
     def ask_initial_folder(self):
         folder = QFileDialog.getExistingDirectory(
             self,
-            "Выберите папку с FB2 книгами (первый запуск)",
+            self.t("folder_first_launch"),
             "",
             QFileDialog.Option.ShowDirsOnly,
         )
@@ -564,7 +659,7 @@ class MainWindow(QMainWindow):
     def choose_folder(self):
         folder = QFileDialog.getExistingDirectory(
             self,
-            "Выберите папку с FB2 книгами",
+            self.t("folder_select"),
             self.current_root_path or "",
             QFileDialog.Option.ShowDirsOnly,
         )
@@ -576,8 +671,8 @@ class MainWindow(QMainWindow):
         if not self.current_root_path or not os.path.isdir(self.current_root_path):
             QMessageBox.information(
                 self,
-                "Обновление",
-                "Текущая папка не задана или недоступна. Выберите папку заново.",
+                self.t("refresh_title"),
+                self.t("refresh_body"),
             )
             self.choose_folder()
             return
@@ -610,7 +705,11 @@ class MainWindow(QMainWindow):
         self.book_tree.expandItem(root_item)
 
         if not has_books:
-            QMessageBox.information(self, "Результат", "FB2 файлы не найдены.")
+            QMessageBox.information(
+                self,
+                self.t("no_books_title"),
+                self.t("no_books_body"),
+            )
             self.save_cache()
             return
 
@@ -684,7 +783,7 @@ class MainWindow(QMainWindow):
 
     def show_book_info(self, info: BookInfo | None, path: str | None):
         if info is None:
-            self.detail_title.setText("Выберите книгу")
+            self.detail_title.setText(self.t("select_book"))
             self.detail_meta.setText("")
             self.info_desc.setPlainText("")
             self.detail_cover.clear()
@@ -708,20 +807,20 @@ class MainWindow(QMainWindow):
         elif path:
             self.detail_title.setText(os.path.basename(path))
         else:
-            self.detail_title.setText("Информация о книге")
+            self.detail_title.setText(self.t("book_info"))
 
         # Метаданные
         meta_parts = []
         if info.authors:
-            meta_parts.append("Автор(ы): " + ", ".join(info.authors))
+            meta_parts.append(self.t("authors") + ": " + ", ".join(info.authors))
         if info.genres:
-            meta_parts.append("Жанр(ы): " + ", ".join(info.genres))
+            meta_parts.append(self.t("genres") + ": " + ", ".join(info.genres))
         if info.publisher:
-            meta_parts.append("Издательство: " + info.publisher)
+            meta_parts.append(self.t("publisher") + ": " + info.publisher)
         if info.date:
-            meta_parts.append("Дата: " + info.date)
+            meta_parts.append(self.t("date") + ": " + info.date)
         if info.lang:
-            meta_parts.append("Язык: " + info.lang)
+            meta_parts.append(self.t("language") + ": " + info.lang)
 
         self.detail_meta.setText("\n".join(meta_parts))
 
@@ -893,7 +992,7 @@ class MainWindow(QMainWindow):
 
         full_text = getattr(info, "full_text", None)
         if not full_text:
-            full_text = info.description or "(Текст книги недоступен)"
+            full_text = info.description or self.t("text_unavailable")
 
         self.current_full_text = full_text
         self.is_reading = True
